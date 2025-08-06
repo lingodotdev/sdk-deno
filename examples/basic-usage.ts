@@ -3,7 +3,7 @@ import { LingoDotDevEngine } from "../src/mod.ts";
 
 // Initialize the engine with your API key
 const engine = new LingoDotDevEngine({
-  apiKey: Deno.env.get("LINGO_API_KEY") || "api_s6smmg5mufa3s9dk3dml3t3o", // Get from https://lingo.dev
+  apiKey: Deno.env.get("LINGO_API_KEY") || "Your_API_KEYS", // Get from https://lingo.dev
   batchSize: 25,
   idealBatchItemSize: 250,
 });
