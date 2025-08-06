@@ -42,8 +42,8 @@ jobs:
       - name: Type check
         run: |
           deno check src/mod.ts
-          deno check examples/basic-usage-clean.ts
-          deno check examples/supabase-edge-function-clean.ts
+          deno check examples/basic-usage.ts
+          deno check examples/supabase-edge-function.ts
 
       - name: Run tests
         env:
