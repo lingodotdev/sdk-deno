@@ -1,0 +1,60 @@
+name: Test
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    name: Test Deno ${{ matrix.deno-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        deno-version: ["2.x"]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Deno ${{ matrix.deno-version }}
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: ${{ matrix.deno-version }}
+
+      - name: Cache Deno dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/deno
+          key: ${{ runner.os }}-deno-${{ hashFiles('**/deno.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-deno-
+
+      - name: Check formatting
+        run: |
+          deno fmt --check
+
+      - name: Lint code
+        run: |
+          deno lint
+
+      - name: Type check
+        run: |
+          deno check src/mod.ts
+          deno check examples/basic-usage.ts
+          deno check examples/supabase-edge-function.ts
+
+      - name: Run tests
+        env:
+          LINGO_API_KEY: ${{ secrets.LINGO_API_KEY }}
+        run: |
+          deno test --allow-net tests/
+
+      - name: Test examples compile
+        run: |
+          deno check examples/*.ts
+
+      - name: Validate JSR configuration
+        run: |
+          deno publish --dry-run --allow-dirty
