@@ -1,0 +1,54 @@
+{
+  "name": "@lingodotdev/deno-sdk",
+  "version": "0.12.0",
+  "description": "Lingo.dev Deno SDK for Edge Runtime and Supabase Functions",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lingodotdev/sdk-deno.git"
+  },
+  "bugs": {
+    "url": "https://github.com/lingodotdev/sdk-deno/issues"
+  },
+  "homepage": "https://github.com/lingodotdev/sdk-deno#readme",
+  "keywords": [
+    "localization",
+    "translation",
+    "i18n",
+    "deno",
+    "supabase",
+    "edge-functions",
+    "lingo"
+  ],
+  "exports": {
+    ".": "./mod.ts"
+  },
+  "tasks": {
+    "check": "deno check src/mod.ts",
+    "test": "deno test --allow-net tests/",
+    "fmt": "deno fmt src/ tests/",
+    "lint": "deno lint src/ tests/",
+    "dev": "deno run --allow-net --watch src/mod.ts"
+  },
+  "imports": {
+    "@std/assert": "jsr:@std/assert@^1.0.0"
+  },
+  "compilerOptions": {
+    "strict": true,
+    "lib": ["deno.window", "dom"]
+  },
+  "fmt": {
+    "useTabs": false,
+    "lineWidth": 80,
+    "indentWidth": 2,
+    "semiColons": true,
+    "singleQuote": false,
+    "proseWrap": "preserve"
+  },
+  "lint": {
+    "rules": {
+      "tags": ["recommended"]
+    }
+  },
+  "exclude": ["build/", "node_modules/"]
+}
