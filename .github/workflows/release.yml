@@ -1,15 +1,81 @@
-name: Release
+name: Auto Release
 
 on:
-  push:
+  pull_request:
+    types: [closed]
     branches: [main]
-    tags:
-      - "v*"
+  workflow_dispatch:
+    inputs:
+      version_type:
+        description: "Version bump type"
+        required: true
+        default: "patch"
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      custom_version:
+        description: "Custom version (optional)"
+        required: false
+        type: string
 
 jobs:
+  # Detect version bump from PR labels or manual trigger
+  detect-release:
+    name: Detect Release Type
+    runs-on: ubuntu-latest
+    if: (github.event.pull_request.merged == true) || github.event_name == 'workflow_dispatch'
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      version_type: ${{ steps.check.outputs.version_type }}
+      custom_version: ${{ steps.check.outputs.custom_version }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check if release should happen
+        id: check
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "should_release=true" >> $GITHUB_OUTPUT
+            echo "version_type=${{ github.event.inputs.version_type }}" >> $GITHUB_OUTPUT
+            echo "custom_version=${{ github.event.inputs.custom_version }}" >> $GITHUB_OUTPUT
+            echo "Manual release triggered"
+          elif [[ "${{ github.event.pull_request.merged }}" == "true" ]]; then
+            # Check PR labels for release type
+            LABELS='${{ toJson(github.event.pull_request.labels.*.name) }}'
+            
+            if echo "$LABELS" | grep -q "release:major"; then
+              echo "should_release=true" >> $GITHUB_OUTPUT
+              echo "version_type=major" >> $GITHUB_OUTPUT
+              echo "Major release detected from PR labels"
+            elif echo "$LABELS" | grep -q "release:minor"; then
+              echo "should_release=true" >> $GITHUB_OUTPUT
+              echo "version_type=minor" >> $GITHUB_OUTPUT
+              echo "Minor release detected from PR labels"
+            elif echo "$LABELS" | grep -q "release:patch"; then
+              echo "should_release=true" >> $GITHUB_OUTPUT
+              echo "version_type=patch" >> $GITHUB_OUTPUT
+              echo "Patch release detected from PR labels"
+            elif echo "$LABELS" | grep -q "release"; then
+              echo "should_release=true" >> $GITHUB_OUTPUT
+              echo "version_type=patch" >> $GITHUB_OUTPUT
+              echo "Generic release label detected, defaulting to patch"
+            else
+              echo "should_release=false" >> $GITHUB_OUTPUT
+              echo "No release labels found"
+            fi
+          else
+            echo "should_release=false" >> $GITHUB_OUTPUT
+          fi
+
+  # Run tests before release
   test:
     name: Test Deno ${{ matrix.deno-version }}
     runs-on: ubuntu-latest
+    needs: detect-release
+    if: needs.detect-release.outputs.should_release == 'true'
     strategy:
       matrix:
         deno-version: ["2.x"]
@@ -32,12 +98,10 @@ jobs:
             ${{ runner.os }}-deno-
 
       - name: Check formatting
-        run: |
-          deno fmt --check
+        run: deno fmt --check
 
       - name: Lint code
-        run: |
-          deno lint
+        run: deno lint
 
       - name: Type check
         run: |
@@ -48,121 +112,191 @@ jobs:
       - name: Run tests
         env:
           LINGO_API_KEY: ${{ secrets.LINGO_API_KEY }}
-        run: |
-          deno test --allow-net tests/
+        run: deno test --allow-net tests/
 
+      - name: Test examples compile
+        run: deno check examples/*.ts
+
+      - name: Validate JSR configuration
+        run: deno publish --dry-run --allow-dirty
+
+  # Bump version and create release
   release:
-    name: Release to JSR and Deno Land
+    name: Create Release
     runs-on: ubuntu-latest
-    needs: test
-    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+    needs: [detect-release, test]
+    if: needs.detect-release.outputs.should_release == 'true'
     permissions:
-      contents: read
+      contents: write
       id-token: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Deno
         uses: denoland/setup-deno@v1
         with:
           deno-version: 2.x
 
-      - name: Extract version from tag or generate
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Calculate new version
         id: version
         run: |
-          if [[ $GITHUB_REF == refs/tags/v* ]]; then
-            VERSION=${GITHUB_REF#refs/tags/v}
-            echo "version=$VERSION" >> $GITHUB_OUTPUT
-            echo "is_release=true" >> $GITHUB_OUTPUT
+          CURRENT_VERSION=$(jq -r '.version' deno.json)
+          CUSTOM_VERSION="${{ needs.detect-release.outputs.custom_version }}"
+          VERSION_TYPE="${{ needs.detect-release.outputs.version_type }}"
+
+          echo "Current version: $CURRENT_VERSION"
+          echo "Version type: $VERSION_TYPE"
+          echo "Custom version: $CUSTOM_VERSION"
+
+          if [ -n "$CUSTOM_VERSION" ]; then
+            NEW_VERSION="$CUSTOM_VERSION"
+            echo "Using custom version: $NEW_VERSION"
           else
-            # Generate pre-release version for main branch
-            COMMIT_SHA=${GITHUB_SHA:0:7}
-            VERSION="0.0.0-dev.$COMMIT_SHA"
-            echo "version=$VERSION" >> $GITHUB_OUTPUT
-            echo "is_release=false" >> $GITHUB_OUTPUT
+            # Parse current version
+            IFS='.' read -ra VERSION_PARTS <<< "$CURRENT_VERSION"
+            MAJOR=${VERSION_PARTS[0]}
+            MINOR=${VERSION_PARTS[1]}
+            PATCH=${VERSION_PARTS[2]}
+
+            case $VERSION_TYPE in
+              "major")
+                MAJOR=$((MAJOR + 1))
+                MINOR=0
+                PATCH=0
+                ;;
+              "minor")
+                MINOR=$((MINOR + 1))
+                PATCH=0
+                ;;
+              "patch")
+                PATCH=$((PATCH + 1))
+                ;;
+            esac
+
+            NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+            echo "Calculated new version: $NEW_VERSION (${VERSION_TYPE} bump)"
           fi
-          echo "Version: $VERSION"
 
-      - name: Update version in deno.json
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "tag=v$NEW_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Update deno.json version
         run: |
-          # Update version in deno.json using jq
-          jq --arg version "${{ steps.version.outputs.version }}" '.version = $version' deno.json > deno.json.tmp
+          NEW_VERSION="${{ steps.version.outputs.version }}"
+          jq --arg version "$NEW_VERSION" '.version = $version' deno.json > deno.json.tmp
           mv deno.json.tmp deno.json
-          echo "Updated deno.json version to ${{ steps.version.outputs.version }}"
-          cat deno.json
+          echo "Updated deno.json to version $NEW_VERSION"
 
-      - name: Validate JSR configuration
+      - name: Commit version bump
         run: |
-          deno publish --dry-run --allow-dirty
+          NEW_VERSION="${{ steps.version.outputs.version }}"
+          git add deno.json
+          git commit -m "chore: bump version to v$NEW_VERSION [skip ci]"
+          git push origin main
+
+      - name: Create and push tag
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          git tag "$TAG"
+          git push origin "$TAG"
+          echo "Created and pushed tag $TAG"
+
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          NEW_VERSION="${{ steps.version.outputs.version }}"
+
+          # Get last tag for changelog
+          LAST_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+
+          # Create release notes
+          cat > release_notes.md << EOF
+          ## What's Changed
+
+          EOF
+
+          if [ -n "$LAST_TAG" ]; then
+            echo "Changes since $LAST_TAG:" >> release_notes.md
+            echo "" >> release_notes.md
+            git log ${LAST_TAG}..HEAD --pretty=format:"* %s (%h)" --no-merges >> release_notes.md
+          else
+            echo "* Initial release of Lingo.dev Deno SDK" >> release_notes.md
+          fi
+
+          cat >> release_notes.md << 'EOF'
+
+          ## Installation
+
+          **JSR (Recommended):**
+          ```bash
+          deno add @lingodotdev/deno-sdk
+          ```
+
+          **Deno Land:**
+          ```typescript
+          import { LingoDotDevEngine } from "https://deno.land/x/lingodotdev@v$NEW_VERSION/mod.ts";
+          ```
+
+          ## Usage
+
+          ```typescript
+          import { LingoDotDevEngine } from "@lingodotdev/deno-sdk";
+
+          const engine = new LingoDotDevEngine({
+            apiKey: "your-api-key"
+          });
+
+          const result = await engine.localizeText("Hello world", {
+            sourceLocale: "en",
+            targetLocale: "es"
+          });
+          ```
+
+          See the [README](https://github.com/lingodotdev/sdk-deno#readme) for full documentation.
+          EOF
+
+          # Replace version placeholder
+          sed -i "s/\$NEW_VERSION/$NEW_VERSION/g" release_notes.md
 
       - name: Publish to JSR
-        if: steps.version.outputs.is_release == 'true'
         run: |
-          deno publish
+          echo "Publishing to JSR..."
+          deno publish --allow-dirty
 
       - name: Create GitHub Release
-        if: steps.version.outputs.is_release == 'true'
         uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: v${{ steps.version.outputs.version }}
-          release_name: Release v${{ steps.version.outputs.version }}
-          body: |
-            ## What's Changed
-
-            This release includes updates to the Lingo.dev Deno SDK.
-
-            ### Installation
-
-            **JSR (Recommended):**
-            ```bash
-            deno add @lingodotdev/deno-sdk
-            ```
-
-            **Deno Land:**
-            ```typescript
-            import { LingoDotDevEngine } from "https://deno.land/x/lingodotdev@v${{ steps.version.outputs.version }}/mod.ts";
-            ```
-
-            ### Usage
-
-            ```typescript
-            import { LingoDotDevEngine } from "@lingodotdev/deno-sdk";
-
-            const engine = new LingoDotDevEngine({
-              apiKey: "your-api-key"
-            });
-
-            const result = await engine.localizeText("Hello world", {
-              sourceLocale: "en",
-              targetLocale: "es"
-            });
-            ```
-
-            See the [README](https://github.com/lingodotdev/sdk-deno#readme) for full documentation.
+          tag_name: ${{ steps.version.outputs.tag }}
+          release_name: Release ${{ steps.version.outputs.tag }}
+          body_path: release_notes.md
           draft: false
           prerelease: false
 
+  # Update Deno Land registry
   deno-land:
     name: Update Deno Land Registry
     runs-on: ubuntu-latest
     needs: release
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: needs.release.result == 'success'
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Extract version
-        id: version
-        run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Trigger Deno Land webhook
         run: |
@@ -177,20 +311,64 @@ jobs:
 
       - name: Wait for Deno Land processing
         run: |
-          echo "Waiting 30 seconds for Deno Land to process the new version..."
-          sleep 30
+          echo "Waiting 60 seconds for Deno Land to process the new version..."
+          sleep 60
 
       - name: Verify Deno Land publication
         run: |
-          VERSION=${{ steps.version.outputs.version }}
+          VERSION="${{ needs.release.outputs.version }}"
           echo "Checking if version $VERSION is available on Deno Land..."
 
-          # Check if the version exists on deno.land/x
-          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "https://deno.land/x/lingodotdev@v$VERSION/mod.ts")
+          MAX_ATTEMPTS=5
+          ATTEMPT=1
 
-          if [ "$HTTP_CODE" = "200" ]; then
-            echo "✅ Version v$VERSION successfully published to Deno Land!"
-          else
-            echo "⚠️ Version v$VERSION not yet available on Deno Land (HTTP $HTTP_CODE)"
-            echo "This may be normal - Deno Land can take a few minutes to process new releases"
+          while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "https://deno.land/x/lingodotdev@v$VERSION/mod.ts")
+            
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "✅ Version v$VERSION successfully published to Deno Land!"
+              break
+            else
+              echo "⏳ Attempt $ATTEMPT/$MAX_ATTEMPTS: Version v$VERSION not yet available (HTTP $HTTP_CODE)"
+              if [ $ATTEMPT -lt $MAX_ATTEMPTS ]; then
+                echo "Waiting 30 seconds before retry..."
+                sleep 30
+              fi
+            fi
+            
+            ATTEMPT=$((ATTEMPT + 1))
+          done
+
+          if [ $ATTEMPT -gt $MAX_ATTEMPTS ]; then
+            echo "⚠️ Version v$VERSION may not be available on Deno Land yet"
+            echo "This can be normal - Deno Land sometimes takes longer to process releases"
           fi
+
+  # Notify success
+  notify:
+    name: Notify Release Success
+    runs-on: ubuntu-latest
+    needs: [release, deno-land]
+    if: always() && needs.release.result == 'success'
+
+    steps:
+      - name: Release Summary
+        run: |
+          VERSION="${{ needs.release.outputs.version }}"
+          TAG="${{ needs.release.outputs.tag }}"
+
+          echo "🎉 Successfully released $TAG!"
+          echo ""
+          echo "📦 Published to:"
+          echo "  ✅ JSR Registry: @lingodotdev/deno-sdk@$VERSION"
+          echo "  ✅ GitHub Releases: $TAG"
+
+          if [[ "${{ needs.deno-land.result }}" == "success" ]]; then
+            echo "  ✅ Deno Land: https://deno.land/x/lingodotdev@v$VERSION"
+          else
+            echo "  ⚠️ Deno Land: May still be processing"
+          fi
+
+          echo ""
+          echo "🚀 Installation:"
+          echo "  deno add @lingodotdev/deno-sdk"
