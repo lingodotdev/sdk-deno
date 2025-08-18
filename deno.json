@@ -26,8 +26,8 @@
   },
   "tasks": {
     "check": "deno check src/mod.ts && deno check examples/*.ts",
-    "test": "deno test --allow-net tests/",
-    "test:watch": "deno test --allow-net --watch tests/",
+    "test": "deno test --allow-net tests/*",
+    "test:watch": "deno test --allow-net --watch tests/*",
     "fmt": "deno fmt src/ tests/ examples/",
     "fmt:check": "deno fmt --check",
     "lint": "deno lint src/ tests/ examples/",
@@ -63,7 +63,6 @@
   "exclude": [
     "./examples/*",
     ".github/*",
-    "./tests/*",
     "README.md",
     "LICENSE"
   ]

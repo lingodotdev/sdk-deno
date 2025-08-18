@@ -1,5 +1,5 @@
 import { assertEquals, assertRejects } from "@std/assert";
-import { LingoDotDevEngine, ReplexicaEngine } from "../src/mod.ts";
+import { LingoDotDevEngine, ReplexicaEngine } from "../mod.ts";
 
 // Mock fetch for testing
 let mockFetch: typeof fetch;
