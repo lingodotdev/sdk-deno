@@ -2,9 +2,14 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { LingoDotDevEngine, LocaleCode } from "../src/mod.ts";
 
+const apiKey = Deno.env.get("LINGO_API_KEY");
+if (!apiKey) {
+  throw new Error("LINGO_API_KEY environment variable is not set");
+}
+
 // Initialize the engine with environment variables
 const engine = new LingoDotDevEngine({
-  apiKey: Deno.env.get("LINGO_API_KEY")!,
+  apiKey,
   batchSize: 25,
   idealBatchItemSize: 250,
 });

@@ -26,7 +26,9 @@
     "https://deno.land/std@0.168.0/async/pool.ts": "6854d8cd675a74c73391c82005cbbe4cc58183bddcd1fbbd7c2bcda42b61cf69",
     "https://deno.land/std@0.168.0/async/retry.ts": "e8e5173623915bbc0ddc537698fa418cf875456c347eda1ed453528645b42e67",
     "https://deno.land/std@0.168.0/async/tee.ts": "3a47cc4e9a940904fd4341f0224907e199121c80b831faa5ec2b054c6d2eff5e",
-    "https://deno.land/std@0.168.0/http/server.ts": "e99c1bee8a3f6571ee4cdeb2966efad465b8f6fe62bec1bdb59c1f007cc4d155"
+    "https://deno.land/std@0.168.0/http/server.ts": "e99c1bee8a3f6571ee4cdeb2966efad465b8f6fe62bec1bdb59c1f007cc4d155",
+    "https://raw.githubusercontent.com/lingodotdev/sdk-deno/main/mod.ts": "916b52270638d876436e562fcfeb5cdc44840e4f96c37c844da6a35145ae48de",
+    "https://raw.githubusercontent.com/lingodotdev/sdk-deno/main/src/mod.ts": "450f6853f3ba4ee9b503454191ccbaadff8dd483a2a61c919562977fd70dff14"
   },
   "workspace": {
     "dependencies": [
