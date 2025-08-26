@@ -1,6 +1,6 @@
 {
   "name": "@lingodotdev/deno-sdk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Lingo.dev Deno SDK for Edge Runtime and Supabase Functions",
   "license": "Apache-2.0",
   "repository": {
@@ -40,7 +40,10 @@
   },
   "compilerOptions": {
     "strict": true,
-    "lib": ["deno.window", "dom"],
+    "lib": [
+      "deno.window",
+      "dom"
+    ],
     "noImplicitAny": true,
     "noImplicitReturns": true,
     "noUnusedLocals": false,
@@ -56,9 +59,13 @@
   },
   "lint": {
     "rules": {
-      "tags": ["recommended"]
+      "tags": [
+        "recommended"
+      ]
     },
-    "exclude": ["examples/"]
+    "exclude": [
+      "examples/"
+    ]
   },
   "exclude": [
     "./examples/*",
