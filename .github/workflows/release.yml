@@ -16,7 +16,7 @@ jobs:
       pull-requests: write
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Deno
         uses: denoland/setup-deno@v1
@@ -83,7 +83,7 @@ jobs:
         deno-version: ["2.x"]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.merge_commit_sha }}
 
@@ -137,7 +137,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.merge_commit_sha }}
@@ -227,7 +227,7 @@ jobs:
     if: "needs.release.result == 'success'"
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Trigger Deno Land webhook
         run: |
           curl -X POST "https://api.deno.land/webhook/gh/lingodotdev/sdk-deno" \
